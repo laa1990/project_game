@@ -3,8 +3,8 @@ import sys
 
 import pygame
 
-SCREEN_WIDTH = 900
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1244
+SCREEN_HEIGHT = 576
 tile_width = tile_height = 60
 
 
@@ -15,6 +15,55 @@ def load_image(name, colorkey=None):
         sys.exit()
     image = pygame.image.load(fullname)
     return image
+
+
+def terminate():
+    pygame.quit()
+    sys.exit()
+
+
+def start_screen():
+    fon = pygame.transform.scale(load_image('fon.png'), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    play = pygame.transform.scale(load_image('play.jpg'), (30, 41))
+    screen.blit(fon, (0, 0))
+    screen.blit(play, (480, 269))
+    button = 0
+    start = True
+    spisok = [(480, 269), (460, 310), (530, 351)]
+    enter = False
+    coming_soon = False
+    while start:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and not coming_soon:
+                if event.key == pygame.K_DOWN:
+                    screen.blit(fon, (0, 0))
+                    button = (button + 1) % 3
+                    screen.blit(play, spisok[button])
+                if event.key == pygame.K_UP:
+                    screen.blit(fon, (0, 0))
+                    button = (button - 1) % 3
+                    screen.blit(play, spisok[button])
+                if event.key == pygame.K_RETURN:
+                    enter = True
+            if event.type == pygame.KEYDOWN and coming_soon:
+                screen.blit(fon, (0, 0))
+                screen.blit(play, spisok[button])
+                coming_soon = False
+            pygame.display.flip()
+        if enter:
+            if button == 0:
+                screen.fill((0, 255, 255))
+                return
+            if button == 2:
+                terminate()
+            if button == 1:
+                button = 0
+                enter = False
+                coming_soon = True
+                screen.blit(pygame.transform.scale(load_image('soon.png'), (SCREEN_WIDTH, SCREEN_HEIGHT)), (0, 0))
+
 
 def load_level(filename):
     # читаем уровень, убирая символы перевода строки
@@ -28,7 +77,7 @@ def load_level(filename):
     return list(map(lambda x: x.ljust(max_width, '.'), level_map))
 
 
-player_image = load_image('Walking_KG_1.png')
+player_image = load_image('Без названия.png')
 
 all_sprites = pygame.sprite.Group()
 tiles_group = pygame.sprite.Group()
@@ -40,7 +89,7 @@ class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__(player_group, all_sprites)
         self.frames = []
-        self.cut_sheet(player_image, 7, 1)
+        self.cut_sheet(player_image, 6, 1)
         self.cur_frame = 0
         self.image = self.frames[self.cur_frame]
         self.rect = self.image.get_rect()
@@ -49,6 +98,7 @@ class Player(pygame.sprite.Sprite):
         self.timer = 0
 
     def cut_sheet(self, sheet, columns, rows):
+        print(sheet.get_width() // columns)
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
                                 sheet.get_height() // rows)
         for j in range(rows):
@@ -56,6 +106,7 @@ class Player(pygame.sprite.Sprite):
                 frame_location = (self.rect.w * i, self.rect.h * j)
                 self.frames.append(sheet.subsurface(pygame.Rect(
                     frame_location, self.rect.size)))
+                print()
 
     def update(self):
         self.timer += 1
@@ -177,9 +228,6 @@ class Camera:
         self.dy = -(target.rect.y + target.rect.h // 2 - SCREEN_HEIGHT // 2)
 
 
-
-
-
 if __name__ == '__main__':
     pygame.init()
     size = SCREEN_WIDTH, SCREEN_HEIGHT
@@ -190,6 +238,7 @@ if __name__ == '__main__':
     running = True
     clock = pygame.time.Clock()
     camera = Camera()
+    start_screen()
     while running:
         screen.fill("black")
         all_sprites.draw(screen)
@@ -221,6 +270,6 @@ if __name__ == '__main__':
             player.rect.left = 0
         if player.rect.right > SCREEN_WIDTH:
             player.rect.right = SCREEN_WIDTH
-        clock.tick(30)
+        clock.tick(60)
         pygame.display.flip()
     pygame.quit()
