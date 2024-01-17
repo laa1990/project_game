@@ -1,15 +1,19 @@
+import math
 import os
 import sys
-from random import choice
+from random import choice, randint
 
 import pygame
+from pygame import Rect
 
-SCREEN_WIDTH = 900
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1244
+SCREEN_HEIGHT = 576
 tile_width = tile_height = 50
 pygame.init()
 size = SCREEN_WIDTH, SCREEN_HEIGHT
 screen = pygame.display.set_mode(size)
+pygame.mixer.music.load('music.mp3')
+print(123)
 
 def load_image(name, colorkey=None):
     fullname = os.path.join('', name)
@@ -25,6 +29,66 @@ def load_image(name, colorkey=None):
     else:
         image = image.convert_alpha()
     return image
+
+
+
+def terminate():
+    pygame.quit()
+    sys.exit()
+
+
+def start_screen():
+    fon = pygame.transform.scale(load_image('fon.png'), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    play = pygame.transform.scale(load_image('play.jpg'), (30, 41))
+    screen.blit(fon, (0, 0))
+    screen.blit(play, (480, 269))
+    button = 0
+    start = True
+    spisok = [(480, 269), (460, 310), (530, 351)]
+    enter = False
+    coming_soon = False
+    sound1 = pygame.mixer.Sound('enter.mp3')
+    sound2 = pygame.mixer.Sound('click.mp3')
+    sound1.set_volume(0.5)
+    sound2.set_volume(0.5)
+    while start:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                terminate()
+            if event.type == pygame.KEYDOWN and not coming_soon:
+                if event.key == pygame.K_DOWN:
+                    sound1.play()
+                    screen.blit(fon, (0, 0))
+                    button = (button + 1) % 3
+                    screen.blit(play, spisok[button])
+                if event.key == pygame.K_UP:
+                    sound1.play()
+                    screen.blit(fon, (0, 0))
+                    button = (button - 1) % 3
+                    screen.blit(play, spisok[button])
+                if event.key == pygame.K_RETURN:
+                    sound2.play()
+                    enter = True
+            if event.type == pygame.KEYDOWN and coming_soon:
+                screen.blit(fon, (0, 0))
+                screen.blit(play, spisok[button])
+                coming_soon = False
+            pygame.display.flip()
+        if enter:
+            if button == 0:
+                pygame.mixer.music.set_volume(0.07)
+                pygame.mixer.music.play(-1)
+                screen.fill((0, 255, 255))
+                return
+            if button == 2:
+                terminate()
+            if button == 1:
+                button = 0
+                enter = False
+                coming_soon = True
+                screen.blit(pygame.transform.scale(load_image('soon.png'), (SCREEN_WIDTH, SCREEN_HEIGHT)), (0, 0))
+
+
 
 def load_level(filename):
     # читаем уровень, убирая символы перевода строки
@@ -46,49 +110,112 @@ skins = {
 }
 
 player_image = load_image('forward_idle.png')
-player_image = pygame.transform.scale(player_image, (800 // 2, 100 // 2))
+player_image = pygame.transform.scale(player_image, (8 * 50, 50))
 
 all_sprites = pygame.sprite.Group()
 tiles_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 enemy_group = pygame.sprite.Group()
+ball_group = pygame.sprite.Group()
+notchanged_group = pygame.sprite.Group()
+bullet_group = pygame.sprite.Group()
 wall_coords = []
 
-enemy_im = [pygame.transform.scale(load_image("img_" + str(i) + ".png"), (tile_width, tile_height)) for i in range(7)]
+enemy_im = [pygame.transform.scale(load_image("img_" + str(i) + ".png"), (tile_width, tile_height)) for i in range(8)]
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__(enemy_group, all_sprites)
-
-        self.image = enemy_im[0]
+        self.image = pygame.transform.scale(enemy_im[0], (50, 50))
         self.rect = self.image.get_rect()
         self.change_x = 0
         self.change_y = 0
         self.timer = 0
+        self.countdown = 0
         self.rect.x = tile_width * x
-        self.rect.y = tile_height * y
+        self.rect.y = tile_height * y + 1
         self.cur_frame = 0
+        self.direction = ''
+        self.flip_image = False
 
+    def update(self, direction):
+        self.timer += 1
+        if direction:
+            if self.timer % 5 == 0:
+                self.cur_frame = (self.cur_frame + 1) % 7
+                self.image = enemy_im[self.cur_frame]
+                if self.flip_image:
+                    self.image = pygame.transform.flip(self.image, True, False)
+            if direction == 1:
+                self.rect.x -= 50
+            elif direction == 2:
+                self.rect.x += 50
+            block_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
+            print(block_hit_list)
+            if not block_hit_list:
+                self.stop()
+            else:
+                self.rect.x += self.change_x
+                self.rect.y += self.change_y
+
+            if direction == 1:
+                self.rect.x += 50
+            elif direction == 2:
+                self.rect.x -= 50
+        if self.timer % 50 == 0:
+            if ((player.rect.x + 25 - self.rect.x - 20) ** 2 + (player.rect.y + 25 - self.rect.y) ** 2) ** 0.5 < 500:
+                Bullet(self.rect.x - 20, self.rect.y)
+
+    def go_left(self):
+        self.change_x = -3
+
+    def go_right(self):
+        self.change_x = 3
+
+    def stop(self):
+        self.change_x = 0
+        self.image = enemy_im[7]
+
+    def flip(self):
+        if self.flip_image:
+            self.flip_image = False
+        else:
+            self.flip_image = True
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(bullet_group, all_sprites)
+        if player.rect.x + 25 == x:
+            if player.rect.y + 25 > y:
+                angle = 90
+            else:
+                angle = 270
+        else:
+            angle = abs(math.degrees(math.atan((player.rect.y + 25 - y) / (player.rect.x - x))))
+            if player.rect.y + 25 > y:
+                if player.rect.x + 25 > x:
+                    angle = -angle
+                else:
+                    angle = angle - 180
+            else:
+                if player.rect.x + 25 > x:
+                    angle = angle
+                else:
+                    angle = 180 - angle
+        self.image = pygame.transform.rotate(pygame.transform.scale(load_image("bull.png", -1), (30, 20)), angle)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.x = player.rect.x + 25 - x
+        self.y = player.rect.y + 25 - y
+        self.timer = 0
+        self.distance = (self.x ** 2 + self.y ** 2) ** 0.5
 
     def update(self):
         self.timer += 1
-        if self.timer % 5 == 0:
-            self.cur_frame = (self.cur_frame + 1) % 7
-            self.image = enemy_im[self.cur_frame]
-        self.rect.x += self.change_x
-        block_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
-        for block in block_hit_list:
-            if self.change_x > 0:
-                self.rect.right = block.rect.left
-            elif self.change_x < 0:
-                self.rect.left = block.rect.right
-        self.rect.y += self.change_y
-        block_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
-        for block in block_hit_list:
-            if self.change_y > 0:
-                self.rect.bottom = block.rect.top
-            elif self.change_y < 0:
-                self.rect.top = block.rect.bottom
-            self.change_y = 0
+        if self.timer % 2 == 0:
+            self.rect.y += self.y // (self.distance / 7)
+            self.rect.x += self.x // (self.distance / 7)
+
 
 
 class Player(pygame.sprite.Sprite):
@@ -105,9 +232,9 @@ class Player(pygame.sprite.Sprite):
         self.change_y = 0
         self.timer = 0
         self.walk_frames = []
-        self.cut_sheet(pygame.transform.scale(load_image(skins[self.color][1]), (600 // 2, 100 // 2)), 6, 1, self.walk_frames)
+        self.cut_sheet(pygame.transform.scale(load_image(skins[self.color][1]), (6 * 50, 50)), 6, 1, self.walk_frames)
         self.jump_frames = []
-        self.cut_sheet(pygame.transform.scale(load_image(skins[self.color][2]), (500 // 2, 100 // 2)), 5, 1,
+        self.cut_sheet(pygame.transform.scale(load_image(skins[self.color][2]), (5 * 50, 50)), 5, 1,
                        self.jump_frames)
         self.rect.x = tile_width * x
         self.rect.y = tile_height * y
@@ -155,6 +282,12 @@ class Player(pygame.sprite.Sprite):
             elif self.change_y < 0:
                 self.rect.top = block.rect.bottom
             self.change_y = 0
+        ball_hit_list = pygame.sprite.spritecollide(player, ball_group, True)
+        if ball_hit_list:
+            global COLLECTED_BALLS
+            COLLECTED_BALLS += 1
+            running = False
+
 
     def gravitation(self):
         if self.change_y == 0:
@@ -193,6 +326,29 @@ class Player(pygame.sprite.Sprite):
     def change_skin(self, color):
         pass
 
+
+class Ball_OF_Thread(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(ball_group, all_sprites)
+        self.image = pygame.transform.scale(load_image("ball.png", -1), (30, 25))
+        self.rect = self.image.get_rect()
+        self.change_y = 1
+        self.start_pos = 0
+        self.timer = 0
+        self.rect.x = tile_width * x + 10
+        self.rect.y = tile_height * y + 12
+
+    def update(self):
+        self.timer += 1
+        if self.timer % 5 == 0:
+            if -5 < self.start_pos < 5:
+                self.rect.y += self.change_y
+                self.start_pos += self.change_y
+            else:
+                self.change_y *= -1
+                self.rect.y += self.change_y
+                self.start_pos += self.change_y
+
 class Background(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__(all_sprites)
@@ -212,7 +368,7 @@ class Background(pygame.sprite.Sprite):
             self.rect = self.image.get_rect().move(0, 0)
 
 
-grass_im = [load_image(str(i) + "_grass.png", (255, 255, 255)) for i in range(9)]
+grass_im = [load_image(str(i) + "_grass.png", (255, 255, 255)) for i in range(15)]
 class Land(pygame.sprite.Sprite):
     def __init__(self, pos_x, pos_y, pos):
         super().__init__(tiles_group, all_sprites)
@@ -221,48 +377,86 @@ class Land(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(
             tile_width * pos_x, tile_height * pos_y)
 
+    def update(self):
+        ball_hit_list = pygame.sprite.spritecollide(self, bullet_group, True)
+        if ball_hit_list:
+            running = False
 
+class Stat_balls(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__(notchanged_group)
+        self.image = pygame.transform.scale(load_image("stat_ball.png"), (120, 20))
+        self.rect = self.image.get_rect().move(50, 30)
 
+    def update(self):
+        screen.fill(pygame.Color(100, 125, 52), pygame.Rect(65, 35, 95 // COL_BALLS * COLLECTED_BALLS, 10))
 def generate_level(level):
     global START_COORDS
+    global COL_BALLS
     for x in range(len(level)):
         for y in range(len(level[x])):
             if level[x][y] == "#":
                 if x == 0 or x == len(level) - 1 or y == 0 or y == len(level[x]) - 1:
                     pos = 6
-                elif level[x - 1][y] != "#":
-                    if level[x][y - 1] != "#":
-                        pos = 0
-                    elif level[x][y + 1] != "#":
-                        pos = 2
-                    else:
-                        pos = 1
-                elif level[x + 1][y] != "#":
-                    if level[x][y - 1] != "#":
-                        pos = 5
-                    elif level[x][y + 1] != "#":
-                        pos = 4
-                    else:
-                        pos = 8
                 else:
-                    if level[x][y - 1] != "#":
-                        pos = 6
-                    elif level[x][y + 1] != "#":
+                    t1 = (level[x - 1][y - 1] != "#")
+                    t2 = (level[x][y - 1] != "#")
+                    t3 = (level[x + 1][y - 1] != "#")
+                    t4 = (level[x + 1][y] != "#")
+                    t5 = (level[x + 1][y + 1] != "#")
+                    t6 = (level[x][y + 1] != "#")
+                    t7 = (level[x - 1][y + 1] != "#")
+                    t8 = (level[x - 1][y] != "#")
+                    if t2 and t4 and t6 and t8:
+                        pos = 9
+                    elif t2 and t8 and t6:
+                        pos = 10
+                    elif t8 and t4 and t6:
+                        pos = 11
+                    elif t4 and t2 and t8:
+                        pos = 12
+                    elif t4 and t2 and t6:
+                        pos = 13
+                    elif t6 and t4:
+                        pos = 4
+                    elif t2 and t4:
+                        pos = 5
+                    elif t8 and t6:
+                        pos = 2
+                    elif t8 and t2:
+                        pos = 0
+                    elif t8 and t4:
+                        pos = 1
+                    elif t6 and t2:
+                        pos = 14
+                    elif t6:
                         pos = 3
+                    elif t2:
+                        pos = 6
+                    elif t8:
+                        pos = 1
+                    elif t4:
+                        pos = 8
                     else:
                         pos = 7
+
                 Land(y, x, pos)
             elif level[x][y] == "@":
                 START_COORDS = (y, x)
             elif level[x][y] == "E":
                 Enemy(y, x)
+            elif level[x][y] == "b":
+                COL_BALLS += 1
+                Ball_OF_Thread(y, x)
     return y, x
-
+COL_BALLS = 0
+COLLECTED_BALLS = 0
 WIDTH_GAME, HEIGHT_GAME = generate_level(load_level("level2.txt"))
-
+statsBall = Stat_balls()
 bg = Background()
 
 player = Player(*START_COORDS)
+
 
 
 class Camera:
@@ -289,13 +483,18 @@ if __name__ == '__main__':
     running = True
     clock = pygame.time.Clock()
     camera = Camera()
+    start_screen()
+    enemy_direction = 0
     while running:
         screen.fill("black")
         all_sprites.draw(screen)
         tiles_group.draw(screen)
-
+        ball_group.draw(screen)
         enemy_group.draw(screen)
         player_group.draw(screen)
+        statsBall.update()
+        notchanged_group.draw(screen)
+        bullet_group.draw(screen)
         camera.update(player)
         # обновляем положение всех спрайтов
         for sprite in all_sprites:
@@ -319,7 +518,30 @@ if __name__ == '__main__':
         player.update()
         bg.update()
         for enemy in enemy_group:
-            enemy.update()
+            if enemy.countdown == 0:
+                enemy.chosee = choice([True, False])
+                enemy.countdown = randint(20, 60)
+                enemy.stop()
+                enemy_direction = 0
+                if enemy.chosee:
+                    enemy.direction = choice(['left', 'right'])
+                    if enemy.direction == 'left':
+                        enemy.flip()
+                        enemy.go_left()
+                        enemy_direction = 1
+                    else:
+                        enemy.go_right()
+                        enemy_direction = 2
+            else:
+                enemy.countdown -= 1
+            enemy.update(enemy_direction)
+        for bullet in bullet_group:
+            bullet.update()
+        for land in tiles_group:
+            land.update()
+
+        for ball in ball_group:
+            ball.update()
         if player.rect.left < 0:
             player.rect.left = 0
         if player.rect.right > SCREEN_WIDTH:
