@@ -13,6 +13,7 @@ size = SCREEN_WIDTH, SCREEN_HEIGHT
 screen = pygame.display.set_mode(size)
 pygame.mixer.music.load('data/sounds/music.mp3')
 
+
 def load_image(name, colorkey=None):
     fullname = os.path.join('data/', name)
     if not os.path.isfile(fullname):
@@ -27,7 +28,6 @@ def load_image(name, colorkey=None):
     else:
         image = image.convert_alpha()
     return image
-
 
 
 def terminate():
@@ -85,7 +85,6 @@ def start_screen(page=0):
                 pygame.mixer.music.set_volume(0.07)
                 pygame.mixer.music.play(-1)
                 screen.fill((0, 255, 255))
-                fon = True
                 return
             if button == 2:
                 terminate()
@@ -94,7 +93,6 @@ def start_screen(page=0):
                 enter = False
                 coming_soon = True
                 screen.blit(pygame.transform.scale(load_image('images/screen/soon.png'), (SCREEN_WIDTH, SCREEN_HEIGHT)), (0, 0))
-
 
 
 def load_level(filename):
@@ -110,15 +108,17 @@ def load_level(filename):
     level_map = list(map(lambda x: "#####" * 5 + x + "#####" * 5, level_map))
     return level_map
 
+
 skins = {
     "orange": ['images/character/forward_idle.png', "images/character/walk_right.png", "images/character/roll.png", "images/character/damage.png", "images/character/death.png"]
 }
 
 player_image = load_image('images/character/forward_idle.png')
 player_image = pygame.transform.scale(player_image, (8 * 50, 50))
-
-
 enemy_im = [pygame.transform.scale(load_image("images/enemy/img_" + str(i) + ".png"), (tile_width, tile_height)) for i in range(8)]
+enemy_death = [pygame.transform.scale(load_image("images\enemy\d_img_" + str(i) + ".png"), (tile_width, tile_height)) for i in range(8)]
+
+
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__(enemy_group, all_sprites)
@@ -127,38 +127,30 @@ class Enemy(pygame.sprite.Sprite):
         self.change_x = 0
         self.change_y = 0
         self.timer = 0
-        self.countdown = 0
         self.rect.x = tile_width * x
         self.rect.y = tile_height * y + 1
         self.cur_frame = 0
-        self.direction = ''
-        self.right = True
+        self.right = 1
+        self.alive = True
 
-    def update(self, direction):
+    def update(self):
         self.timer += 1
-        if direction:
+        if self.alive:
             if self.timer % 5 == 0:
                 self.cur_frame = (self.cur_frame + 1) % 7
                 self.image = enemy_im[self.cur_frame]
-                self.flip()
-            if direction == 1:
-                self.rect.x -= 50
-            elif direction == 2:
-                self.rect.x += 50
-            block_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
-            if not block_hit_list:
-                self.stop()
-            else:
-                self.rect.x += self.change_x
-                self.rect.y += self.change_y
-            if direction == 1:
-                self.rect.x += 50
-            elif direction == 2:
-                self.rect.x -= 50
-
-        if self.timer % 50 == 0:
-            if ((player.rect.x - self.rect.x) ** 2 + (player.rect.y - self.rect.y) ** 2) ** 0.5 < 500:
-                Bullet(self.rect.x, self.rect.y)
+                if self.right == -1:
+                    self.flip()
+                self.rect.x += 10 * self.right
+                if pygame.sprite.spritecollideany(self, enemy_stop_group):
+                    self.right *= -1
+            if self.timer % 50 == 0:
+                if ((player.rect.x - self.rect.x) ** 2 + (player.rect.y - self.rect.y) ** 2) ** 0.5 < 500:
+                    Bullet(self.rect.x, self.rect.y)
+        else:
+            if self.timer <= 35:
+                if self.timer % 5 == 0:
+                    self.image = enemy_death[self.timer // 5]
 
     def go_left(self):
         self.change_x = -3
@@ -175,6 +167,15 @@ class Enemy(pygame.sprite.Sprite):
     def flip(self):
         if not self.right:
             self.image = pygame.transform.flip(self.image, True, False)
+
+    def death(self):
+        kill_sound = pygame.mixer.Sound('data\sounds\kill.wav')
+        kill_sound.set_volume(0.5)
+        kill_sound.play()
+        self.timer = 0
+        self.alive = False
+        self.update()
+
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -212,9 +213,9 @@ class Bullet(pygame.sprite.Sprite):
             self.rect.x += self.x // (self.distance / 7)
 
 
-
 class Player(pygame.sprite.Sprite):
     right = False
+
     def __init__(self, x, y):
         super().__init__(player_group, all_sprites)
         self.color = "orange"
@@ -241,7 +242,10 @@ class Player(pygame.sprite.Sprite):
         self.rect.y = tile_height * y
         self.injure = False
         self.die = False
-
+        self.direction = 0
+        self.movement = 0
+        self.colition = False
+        self.colition_with_enemy = []
 
     def cut_sheet(self, sheet, columns, rows, mass):
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
@@ -283,6 +287,8 @@ class Player(pygame.sprite.Sprite):
                 self.image = self.stop_frames[self.cur_frame]
                 self.flip()
         else:
+            if self.on_the_ground:
+                particle.update(self.rect.x, self.rect.y, self.direction)
             if self.timer % 5 == 0:
                 self.cur_frame = (self.cur_frame + 1) % len(self.walk_frames)
                 self.image = self.walk_frames[self.cur_frame]
@@ -307,18 +313,30 @@ class Player(pygame.sprite.Sprite):
         if ball_hit_list:
             global COLLECTED_BALLS
             COLLECTED_BALLS += 1
+            get_sound = pygame.mixer.Sound('data\sounds\get.wav')
+            get_sound.set_volume(0.1)
+            get_sound.play()
             running = False
         bullet_hit_list = pygame.sprite.spritecollide(player, bullet_group, True)
         if bullet_hit_list and HP_STATS != 0:
             HP_STATS -= 1
+            hit_sound = pygame.mixer.Sound('data\sounds\hit.wav')
+            hit_sound.set_volume(0.1)
+            hit_sound.play()
             self.injured()
             running = False
         if pygame.sprite.spritecollideany(self, portal_group):
+            warp_sound = pygame.mixer.Sound('data\sounds\warp.wav')
+            warp_sound.set_volume(0.1)
+            warp_sound.play()
             global CHANGE_LEVEL
             CHANGE_LEVEL = True
         danger_list = pygame.sprite.spritecollide(self, danger_group, False)
         if danger_list and HP_STATS != 0:
             HP_STATS -= 1
+            hit_sound = pygame.mixer.Sound('data\sounds\hit.wav')
+            hit_sound.set_volume(0.1)
+            hit_sound.play()
             self.injured()
         if pygame.sprite.spritecollideany(self, die_group):
             HP_STATS = 0
@@ -329,15 +347,15 @@ class Player(pygame.sprite.Sprite):
                     HP_STATS = 15
                 else:
                     HP_STATS += 2
+                    get_sound = pygame.mixer.Sound('data\sounds\get.wav')
+                    get_sound.set_volume(0.1)
+                    get_sound.play()
                 running = False
         player_list = pygame.sprite.spritecollide(self, studying_group, True)
         if player_list:
             global STUDY_NUM, STUDY
             STUDY_NUM += 2
             STUDY = True
-
-
-
 
     def gravitation(self):
         if self.change_y == 0:
@@ -349,24 +367,29 @@ class Player(pygame.sprite.Sprite):
             self.rect.y = SCREEN_HEIGHT - self.rect.height
 
     def jump(self):
-
         self.rect.y += 10
         platform_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
         self.rect.y -= 10
         if len(platform_hit_list) > 0 or self.rect.bottom >= SCREEN_HEIGHT:
             self.change_y = -16
+            jump_sound = pygame.mixer.Sound('data\sounds\jump.wav')
+            jump_sound.set_volume(0.1)
+            jump_sound.play()
 
     def go_left(self):
         self.change_x = -9
+        self.movement = True
         if (self.right):
             self.right = False
 
     def go_right(self):
         self.change_x = 9
+        self.movement = True
         if (not self.right):
             self.right = True
 
     def stop(self):
+        self.movement = False
         self.change_x = 0
 
     def flip(self):
@@ -393,7 +416,85 @@ class Player(pygame.sprite.Sprite):
             CURRENT_LEVEL = 0
             GAME_OVER = True
             paused = True
+            pygame.mixer.Sound('data\sounds\death.wav').play()
 
+    def on_the_ground(self):
+        self.rect.y += 1
+        block_hit_list = pygame.sprite.spritecollide(self, tiles_group, False)
+        self.rect.y -= 1
+        for block in block_hit_list:
+            x = block.rect.top
+            if block.rect.top:
+                return True
+        return False
+
+    def atack(self):
+        count = 0
+        self.rect.x += 10
+        enemy_hit_list = pygame.sprite.spritecollide(self, enemy_group, False)
+        self.rect.x -= 20
+        enemy_hit_list2 = pygame.sprite.spritecollide(self, enemy_group, False)
+        self.rect.x += 10
+        if enemy_hit_list:
+            count += 1
+            if not self.colition_with_enemy:
+                for enemy in enemy_hit_list:
+                    enemy.death()
+                    self.colition_with_enemy.append(enemy)
+                return
+        elif not enemy_hit_list and enemy_hit_list2:
+            count += 1
+            if not self.colition_with_enemy:
+                for enemy in enemy_hit_list2:
+                    enemy.death()
+                    self.colition_with_enemy.append(enemy)
+        elif count == 0:
+            self.colition_with_enemy = []
+        if self.colition_with_enemy:
+            for enemy in self.colition_with_enemy:
+                enemy.update()
+        if count:
+            self.colition = False
+        else:
+            self.colition = True
+
+
+class Particle(pygame.sprite.Sprite):
+    # сгенерируем частицы разного размера
+    def __init__(self):
+        super().__init__(particle_group)
+        self.sheet = []
+        self.cut_sheet(load_image("images/another/particle.png"), 6, 1, self.sheet)
+        self.image = choice(self.sheet)
+        self.rect = self.image.get_rect()
+        self.cur_frame = 0
+        self.timer = 0
+        # у каждой частицы своя скорость — это вектор
+
+        # и свои координаты
+        self.rect.x, self.rect.y = 0, 0
+        # гравитация будет одинаковой (значение константы)
+        self.gravity = .95
+
+    def update(self, x, y, direction):
+        self.timer += 1
+        if self.timer % 5 == 0:
+            self.cur_frame = (self.cur_frame + 1) % len(self.sheet)
+            self.image = self.sheet[self.cur_frame]
+        if not direction:
+            self.rect.x = x + 30
+        else:
+            self.rect.x = x - 15
+        self.rect.y = y + 15
+
+    def cut_sheet(self, sheet, columns, rows, mass):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                mass.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))
 
 
 class Ball_OF_Thread(pygame.sprite.Sprite):
@@ -418,6 +519,7 @@ class Ball_OF_Thread(pygame.sprite.Sprite):
                 self.rect.y += self.change_y
                 self.start_pos += self.change_y
 
+
 class Background(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__(all_sprites, back_group)
@@ -427,6 +529,7 @@ class Background(pygame.sprite.Sprite):
         self.change_x = self.change_y = 0
         self.timer = 0
         self.cur_frame = 0
+
     def update(self):
         self.timer += 1
         if self.timer % 1 == 0:
@@ -438,6 +541,8 @@ class Background(pygame.sprite.Sprite):
 
 
 grass_im = [load_image("images/land/" + str(i) + "_grass.png", (255, 255, 255)) for i in range(15)]
+
+
 class Land(pygame.sprite.Sprite):
     def __init__(self, pos_x, pos_y, pos):
         super().__init__(tiles_group, all_sprites)
@@ -450,6 +555,7 @@ class Land(pygame.sprite.Sprite):
         ball_hit_list = pygame.sprite.spritecollide(self, bullet_group, True)
         if ball_hit_list:
             running = False
+
 
 class Stat_balls(pygame.sprite.Sprite):
     def __init__(self):
@@ -464,6 +570,7 @@ class Stat_balls(pygame.sprite.Sprite):
         text = font.render(str(COLLECTED_BALLS) + " / " + str(COL_BALLS), True, (255, 255, 255))
         screen.blit(text, (200, 25))
 
+
 class Stat_hp(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__(notchanged_group)
@@ -475,6 +582,7 @@ class Stat_hp(pygame.sprite.Sprite):
         font = pygame.font.Font("data/fonts/font.ttf", 25)
         text = font.render(str(HP_STATS) + " / " + str(15), True, (255, 255, 255))
         screen.blit(text, (200, 75))
+
 
 class Fish(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -519,7 +627,6 @@ class Portal(pygame.sprite.Sprite):
         self.cur_frame = 0
         self.timer = 0
 
-
     def cut_sheet(self, sheet, columns, rows, mass):
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
                                 sheet.get_height() // rows)
@@ -535,6 +642,7 @@ class Portal(pygame.sprite.Sprite):
             self.cur_frame = (self.cur_frame + 1) % 20
             self.image = self.frames[self.cur_frame]
 
+
 class Pause_Window(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__(pause_group)
@@ -548,6 +656,7 @@ class Pause_Window(pygame.sprite.Sprite):
 
         self.cur_frame = 0
         self.timer = 0
+
     def cut_sheet(self, sheet, columns, rows, mass):
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
                                 sheet.get_height() // rows)
@@ -571,6 +680,7 @@ class Pause_Window(pygame.sprite.Sprite):
         text_h = text.get_height()
         screen.blit(text, (text_x, text_y - 30))
         screen.blit(text2, (900 // 2 - text2.get_width() // 2,  600 // 2 - text2.get_height() // 2 + 20))
+
 
 class Horizontal_barb(pygame.sprite.Sprite):
     def __init__(self, x, y, lenth):
@@ -600,6 +710,7 @@ class Horizontal_barb(pygame.sprite.Sprite):
             self.rect.x += 5 * self.right
             if pygame.sprite.spritecollideany(self, tiles_group):
                 self.right *= -1
+
 
 class Die_block(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -653,6 +764,7 @@ SCRIPTS = ["пора напомнить,какая цивилизация вла
            "будь аккуратнее",
            "обучение прошло успешно, кошачья нация",
            " гордится тобой, захватывай человеческий мир!"]
+
 class Studying(pygame.sprite.Sprite):
     def __init__(self, x, y, number):
         super().__init__(all_sprites, studying_group)
@@ -662,10 +774,17 @@ class Studying(pygame.sprite.Sprite):
         self.rect.y = tile_height * y - 600
         self.number = number - 1
 
-
+class Enemy_stop(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(all_sprites, enemy_stop_group)
+        self.image = pygame.transform.scale(load_image("images/gif/0.gif"), (50, 50))
+        self.rect = self.image.get_rect()
+        self.rect.x = tile_width * x
+        self.rect.y = tile_height * y
 
 def study_level(level):
     generate_level(load_level("data/level1.txt"), study=True)
+
 
 def generate_level(level, study=False):
     global COL_BALLS
@@ -736,6 +855,8 @@ def generate_level(level, study=False):
                 Portal(y, x)
             elif study and level[x][y].isdigit():
                 Studying(y, x, int(level[x][y]))
+            elif level[x][y] == "|":
+                Enemy_stop(y, x)
             elif level[x][y] == "g" and level[x][y - 1] != "g":
                 temp = True
                 t = y
@@ -744,8 +865,6 @@ def generate_level(level, study=False):
                     if not(level[x][t] == "g"):
                         temp = False
                 Horizontal_barb(y, x, y - t)
-
-
 
 
 def del_level():
@@ -762,6 +881,8 @@ def del_level():
     die_group.empty()
     bonus_group.empty()
     studying_group.empty()
+    enemy_stop_group.empty()
+    particle_group.empty()
     COL_BALLS = 0
     COLLECTED_BALLS = 0
     player = None
@@ -784,6 +905,25 @@ class Camera:
         self.dy = -(target.rect.y + target.rect.h // 2 - SCREEN_HEIGHT // 2)
 
 
+class Sound():
+    def __init__(self):
+        super().__init__()
+        self.sound1 = pygame.mixer.Sound('data/sounds/grass_1.wav')
+        self.sound1.set_volume(0.05)
+        self.motion = ''
+
+    def grass(self, motion):
+        if motion == 'stop':
+            self.motion = motion
+            self.sound1.stop()
+        elif motion == 'play' and self.motion != 'play':
+            self.motion = motion
+            self.sound1.play(-1)
+
+
+
+
+
 if __name__ == '__main__':
     running = True
     clock = pygame.time.Clock()
@@ -804,6 +944,8 @@ if __name__ == '__main__':
     bonus_group = pygame.sprite.Group()
     studying_group = pygame.sprite.Group()
     game_over_Window = Game_over()
+    particle_group = pygame.sprite.Group()
+    enemy_stop_group = pygame.sprite.Group()
     GAME_OVER = False
     COL_BALLS = 0
     COLLECTED_BALLS = 0
@@ -816,6 +958,7 @@ if __name__ == '__main__':
     statsBall = Stat_balls()
     statHp = Stat_hp()
     bg = Background()
+    particle = Particle()
     paused = False
     enemy_direction = 0
     pause_Window = Pause_Window()
@@ -825,6 +968,7 @@ if __name__ == '__main__':
     fon = True
     study_level("data/level1.txt")
     STUDY = False
+    sound = Sound()
     while running:
         screen.fill("black")
         all_sprites.draw(screen)
@@ -907,8 +1051,10 @@ if __name__ == '__main__':
                     start_screen()
                 if not paused:
                     if event.key == pygame.K_LEFT:
+                        player.direction = 0
                         player.go_left()
                     if event.key == pygame.K_RIGHT:
+                        player.direction = 1
                         player.go_right()
                     if event.key == pygame.K_UP:
                         player.jump()
@@ -918,25 +1064,16 @@ if __name__ == '__main__':
                 if event.key == pygame.K_RIGHT and player.change_x > 0:
                     player.stop()
         bg.update()
+        if player.on_the_ground() and player.movement:
+            particle_group.draw(screen)
+            sound.grass('play')
+        else:
+            sound.grass('stop')
+        player.atack()
         if not paused and not STUDY:
             player.update()
             for enemy in enemy_group:
-                if enemy.countdown == 0:
-                    enemy.chosee = choice([True, False])
-                    enemy.countdown = randint(20, 60)
-                    enemy.stop()
-                    enemy_direction = 0
-                    if enemy.chosee:
-                        enemy.direction = choice(['left', 'right'])
-                        if enemy.direction == 'left':
-                            enemy.go_left()
-                            enemy_direction = 1
-                        else:
-                            enemy.go_right()
-                            enemy_direction = 2
-                else:
-                    enemy.countdown -= 1
-                enemy.update(enemy_direction)
+                enemy.update()
             for bullet in bullet_group:
                 bullet.update()
             for s in studying_group:
@@ -959,7 +1096,7 @@ if __name__ == '__main__':
             paused = True
             game_over_Window.update()
         if STUDY:
-            #player.update()
+
             pause = pygame.Surface((900, 200), pygame.SRCALPHA)
             pause.fill((0, 0, 0, 100))
             screen.blit(pause, (0, 400))
