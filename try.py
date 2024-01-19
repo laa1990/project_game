@@ -332,9 +332,9 @@ class Player(pygame.sprite.Sprite):
                 running = False
         player_list = pygame.sprite.spritecollide(self, studying_group, True)
         if player_list:
-            global STUDY_NUM
-            print(SCRIPTS[STUDY_NUM])
-            STUDY_NUM += 1
+            global STUDY_NUM, STUDY
+            STUDY_NUM += 2
+            STUDY = True
 
 
 
@@ -638,14 +638,21 @@ class Game_over(pygame.sprite.Sprite):
         screen.blit(text, (text_x, text_y + 70))
         screen.blit(text2, (900 // 2 - text2.get_width() // 2, 600 // 2 - text2.get_height() // 2 + 150))
 
-STUDY_NUM = 0
-SCRIPTS = ["Кожаные совсем обнаглели, пора напомнить, какая цивилизация влавствует! Используй стрелочки, чтобы передвигаться",
-           "Прыгай на человека, пока он не сделал это первым",
-           "Глупые людишки думают, что это может нас напугать",
-           "Собирай клубки, чтобы запутывать людям не только мысли своей милотой",
-           "Покушай, захватывать мир очень изматывающе",
-           "Опять кожаные поясничают, будь аккуратнее",
-           "Обучение прошло успешно, кошачья нация гордится тобой, захватывай человеческий мир!"]
+STUDY_NUM = -2
+SCRIPTS = ["пора напомнить,какая цивилизация влавствует! ",
+           "Используй стрелочки, чтобы передвигаться",
+           "прыгай на человека, ",
+           "пока он не сделал это первым",
+           "Глупые людишки думают, ",
+           "что это может нас напугать",
+           "Собирай клубки, чтобы ",
+           "запутывать людям не только мысли своей милотой",
+           "покушай, если ранен, ",
+           "захватывать мир очень изматывающе",
+           "опять кожаные поясничают, ",
+           "будь аккуратнее",
+           "обучение прошло успешно, кошачья нация",
+           " гордится тобой, захватывай человеческий мир!"]
 class Studying(pygame.sprite.Sprite):
     def __init__(self, x, y, number):
         super().__init__(all_sprites, studying_group)
@@ -654,7 +661,6 @@ class Studying(pygame.sprite.Sprite):
         self.rect.x = tile_width * x
         self.rect.y = tile_height * y - 600
         self.number = number - 1
-
 
 
 
@@ -755,7 +761,8 @@ def del_level():
     danger_group.empty()
     die_group.empty()
     bonus_group.empty()
-    COL_BALLS = 1
+    studying_group.empty()
+    COL_BALLS = 0
     COLLECTED_BALLS = 0
     player = None
 
@@ -798,7 +805,7 @@ if __name__ == '__main__':
     studying_group = pygame.sprite.Group()
     game_over_Window = Game_over()
     GAME_OVER = False
-    COL_BALLS = 1
+    COL_BALLS = 0
     COLLECTED_BALLS = 0
     HP_STATS = 15
     CHANGE_LEVEL = False
@@ -835,7 +842,6 @@ if __name__ == '__main__':
         notchanged_group.draw(screen)
         bullet_group.draw(screen)
         camera.update(player)
-
         if fon:
             timer -= 4
             if timer < 20:
@@ -890,6 +896,7 @@ if __name__ == '__main__':
             if event.type == pygame.QUIT:
                 running = False
             if event.type == pygame.KEYDOWN:
+                STUDY = False
                 if event.key == 32:
                     paused = not paused
                     if GAME_OVER:
@@ -911,7 +918,7 @@ if __name__ == '__main__':
                 if event.key == pygame.K_RIGHT and player.change_x > 0:
                     player.stop()
         bg.update()
-        if not paused:
+        if not paused and not STUDY:
             player.update()
             for enemy in enemy_group:
                 if enemy.countdown == 0:
@@ -951,6 +958,19 @@ if __name__ == '__main__':
         if GAME_OVER:
             paused = True
             game_over_Window.update()
+        if STUDY:
+            #player.update()
+            pause = pygame.Surface((900, 200), pygame.SRCALPHA)
+            pause.fill((0, 0, 0, 100))
+            screen.blit(pause, (0, 400))
+            img = pygame.transform.scale(load_image("images/another/gary.png"),(400, 300))
+            rect = img.get_rect()
+            screen.blit(img, (0, 300))
+            font = pygame.font.Font("data/fonts/second_font.ttf", 20)
+            text = font.render(SCRIPTS[STUDY_NUM], True, (255, 255, 255))
+            text2 = font.render(SCRIPTS[STUDY_NUM + 1], True, (255, 255, 255))
+            screen.blit(text, (250 + 650 // 2 - text.get_width() // 2, 460))
+            screen.blit(text2, (250 + 650 // 2 - text2.get_width() // 2, 500))
 
         clock.tick(30)
         pygame.display.flip()
